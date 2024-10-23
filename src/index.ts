@@ -1,14 +1,15 @@
-import { RouteLocationNormalized, Router } from 'vue-router';
+import VueRouter, { Route } from 'vue-router';
+import { VueConstructor, PluginObject } from 'vue';
 
 type UmamiPluginOptions = {
     websiteID: string;
     scriptSrc?: string;
-    router?: Router;
+    router?: VueRouter;
 }
 
 type UmamiPluginQueuedEvent = {
     type: UmamiTrackEvent,
-    args: [ UmamiTrackEventParams ]
+    args: [UmamiTrackEventParams]
 } | ((props: UmamiTrackPaveViewOptions) => UmamiTrackPaveViewOptions);
 
 type UmamiTrackEvent = string;
@@ -25,25 +26,40 @@ type UmamiTrackPaveViewOptions = {
     url?: string;
 }
 
-const queuedEvents: UmamiPluginQueuedEvent[] = [];
-
-export function VueUmamiPlugin(options: UmamiPluginOptions): { install: () => void; } {
-    return {
-        install: () => {
-            const { scriptSrc = 'https://us.umami.is/script.js', websiteID, router }: UmamiPluginOptions = options;
-            if (!websiteID) {
-                return console.warn('Website ID not provided for Umami plugin, skipping.');
-            }
-            if (router) {
-                attachUmamiToRouter(router);
-            }
-            onDocumentReady(() => initUmamiScript(scriptSrc, websiteID));
-        }
-    };
+declare global {
+    interface Window {
+        umami: {
+            track: (event: UmamiTrackEvent | ((props: UmamiTrackPaveViewOptions) => UmamiTrackPaveViewOptions), params?: UmamiTrackEventParams) => void;
+        };
+    }
 }
 
-function attachUmamiToRouter(router: Router): void {
-    router.afterEach((to: RouteLocationNormalized): void => trackUmamiPageView({ url: to.fullPath }));
+const queuedEvents: UmamiPluginQueuedEvent[] = [];
+
+
+export const VueUmamiPlugin: PluginObject<UmamiPluginOptions> = {
+
+    install(Vue: VueConstructor, options: UmamiPluginOptions | undefined): void {
+
+        if (!options) {
+            throw new Error('Please provide the necessary options for the Umami plugin.');
+        }
+
+        const { scriptSrc = 'https://us.umami.is/script.js', websiteID, router }: UmamiPluginOptions = options;
+        if (!websiteID) {
+            return console.warn('Website ID not provided for Umami plugin, skipping.');
+        }
+        if (router) {
+            attachUmamiToRouter(router);
+        }
+        onDocumentReady(() => initUmamiScript(scriptSrc, websiteID));
+
+    },
+
+};
+
+function attachUmamiToRouter(router: VueRouter): void {
+    router.afterEach((to: Route): void => trackUmamiPageView({ url: to.fullPath }));
 }
 
 function onDocumentReady(callback: () => void): void {
@@ -89,5 +105,5 @@ export function trackUmamiPageView(options?: Partial<UmamiTrackPaveViewOptions>)
 export function trackUmamiEvent(event: UmamiTrackEvent, eventParams: UmamiTrackEventParams): void {
     window.umami
         ? window.umami.track(event, eventParams)
-        : queuedEvents.push({ type: event, args: [ eventParams ] });
+        : queuedEvents.push({ type: event, args: [eventParams] });
 }
