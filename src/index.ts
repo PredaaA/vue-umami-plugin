@@ -4,6 +4,7 @@ import { VueConstructor, PluginObject } from 'vue';
 type UmamiPluginOptions = {
     websiteID: string;
     scriptSrc?: string;
+    ignoreLocalhost?: boolean;
     router?: VueRouter;
 }
 
@@ -37,6 +38,15 @@ declare global {
 const queuedEvents: UmamiPluginQueuedEvent[] = [];
 
 
+function isUmaniDisabled(): boolean {
+    return localStorage.getItem('umami.disabled') === '1';
+}
+
+function isLocalhost(): boolean {
+    const hostname: string = location.hostname;
+    return hostname === '' || hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
 export const VueUmamiPlugin: PluginObject<UmamiPluginOptions> = {
 
     install(Vue: VueConstructor, options: UmamiPluginOptions | undefined): void {
@@ -45,15 +55,23 @@ export const VueUmamiPlugin: PluginObject<UmamiPluginOptions> = {
             throw new Error('Please provide the necessary options for the Umami plugin.');
         }
 
-        const { scriptSrc = 'https://us.umami.is/script.js', websiteID, router }: UmamiPluginOptions = options;
+        const { scriptSrc = 'https://us.umami.is/script.js', websiteID, ignoreLocalhost = false, router }: UmamiPluginOptions = options;
         if (!websiteID) {
             return console.warn('Website ID not provided for Umami plugin, skipping.');
+        }
+
+        if (isLocalhost() && ignoreLocalhost) {
+            return console.warn('Umami ignores you because you are on localhost');
+        }
+
+        if (isUmaniDisabled()) {
+            // The script already ignores but let's stop earlier.
+            return console.warn('Umami ignores you because umami.disabled is set to 1');
         }
         if (router) {
             attachUmamiToRouter(router);
         }
         onDocumentReady(() => initUmamiScript(scriptSrc, websiteID));
-
     },
 
 };
@@ -97,6 +115,7 @@ export function trackUmamiPageView(options?: Partial<UmamiTrackPaveViewOptions>)
     const trackPageViewOptionsFn = (props: UmamiTrackPaveViewOptions): UmamiTrackPaveViewOptions => {
         return { ...props, ...options };
     };
+
     window.umami
         ? window.umami.track(trackPageViewOptionsFn)
         : queuedEvents.push(trackPageViewOptionsFn);
